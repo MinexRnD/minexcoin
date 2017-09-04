@@ -77,8 +77,11 @@ public:
         consensus.BIP65Height = 0; // 000000000000000004c2b624ed5d7756c508d90fd0da2c7c679febfa6c4735f0
         consensus.BIP66Height = 0; // 00000000000000000379eaa19dce8c9b722d46ae6a57c2f1a988119488b50931
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.nPowTargetTimespan = 2 * 24 * 60 * 60; // two days
-        consensus.nPowTargetSpacing = 3 * 60; // three minutes
+
+        // MC-6 Change time mining and difficulty rate
+        consensus.nPowTargetTimespan = 11 * 60 * 60; // 11 hours
+        consensus.nPowTargetSpacing = 2 * 60 + 45; // 2 minutes 45 seconds
+        
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nMinerConfirmationWindow = consensus.nPowTargetTimespan / consensus.nPowTargetSpacing;

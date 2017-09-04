@@ -114,13 +114,14 @@ UniValue generateBlocks(boost::shared_ptr<CReserveScript> coinbaseScript, int nG
     unsigned int k = Params().EquihashK();
     unsigned int nExtraNonce = 0;
     UniValue blockHashes(UniValue::VARR);
+
+    outer:
     while (nHeight < nHeightEnd)
     {
         std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript));
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
         CBlock *pblock = &pblocktemplate->block;
-
         {
             LOCK(cs_main);
             IncrementExtraNonce(pblock, chainActive.Tip(), nExtraNonce);
@@ -143,6 +144,11 @@ UniValue generateBlocks(boost::shared_ptr<CReserveScript> coinbaseScript, int nG
             // target -- 1 in 2^(2^256). That ain't gonna happen
             pblock->nNonce = ArithToUint256(UintToArith256(pblock->nNonce) + 1);
 
+            // MC-11 Transactions don't always added to block
+            if (UintToArith256(pblock->nNonce) == nInnerLoopCount) {
+                goto outer;
+            }
+
             // H(I||V||...
             crypto_generichash_blake2b_state curr_state;
             curr_state = eh_state;
@@ -157,11 +163,12 @@ UniValue generateBlocks(boost::shared_ptr<CReserveScript> coinbaseScript, int nG
                 return CheckProofOfWork(pblock->GetHash(), pblock->nBits, Params().GetConsensus());
             };
             bool found = EhBasicSolveUncancellable(n, k, curr_state, validBlock);
-            if (found) {
-                goto endloop;
+
+            // MC-4 Investigate system crashing during mining
+            if (found && CheckEquihashSolution(pblock, Params())) {
+                break;
             }
         }
-endloop:
 
         std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
         if (!ProcessNewBlock(Params(), shared_pblock, true, NULL))
@@ -782,6 +789,11 @@ UniValue submitblock(const JSONRPCRequest& request)
 
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase()) {
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Block does not start with a coinbase");
+    }
+
+    // MC-4 Investigate system crashing during mining
+    if (!CheckEquihashSolution(&block, Params())) {
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Invalid equihash solution");
     }
 
     uint256 hash = block.GetHash();
